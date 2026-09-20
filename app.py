@@ -39,7 +39,7 @@ st.set_page_config(
 )
 
 st.title("📄 AI 취업·자소서 분석기")
-st.caption("자소서 + 채용공고 + 지원직무를 비교해서 개선 방향을 분석합니다.")
+st.caption("자소서 + 채용공고 + 지원직무를 비교해서 개선 방향을 분석하거나, 새 자소서를 항목별로 생성합니다.")
 
 
 # --------------------------------------------------
@@ -88,26 +88,20 @@ with st.sidebar:
     st.markdown("""
     ### 현재 버전
 
-    **1차 MVP**
+    **2차 버전**
 
     - Gemini / Claude 중 선택 가능
-    - 자소서 파일 분석
-    - 채용공고 분석
-    - 직무 적합도 분석
-    - 강점/약점 분석
-    - 개선 방향 제시
-    - AI 수정본 생성
-    - 원본/수정본 비교
+    - 기존 자소서 분석 / AI 수정본 생성
+    - **새 자소서 항목별 생성 (신규)**
+    - **자소서 항목 선택란 (신규)**
+    - 직무 적합도 분석, 강점/약점 분석
+    - 원본/수정본 비교, 결과 다운로드 (.txt / .docx)
     - 글자 수 실시간 카운터
-    - 결과 다운로드 (.txt / .docx)
-    - 문항별 입력 지원
 
     이후에는
 
     - 실제 채용공고 검색
-    - 회사 뉴스 분석
-    - 산업 전망
-    - 채용시장 분석
+    - 회사 뉴스 분석 / 채용시장 분석
     - 경쟁 지원자 포지셔닝
 
     을 추가할 수 있습니다.
@@ -126,6 +120,46 @@ reference_resume = st.text_area(
     placeholder="비교 분석받고 싶은 합격자의 자기소개서를 붙여넣으세요.",
     height=200
 )
+
+
+# --------------------------------------------------
+# 모드 선택 (신규)
+# --------------------------------------------------
+
+st.divider()
+mode = st.radio(
+    "🎯 무엇을 하고 싶으신가요?",
+    ["🔍 기존 자소서 분석 및 수정", "✨ 새 자소서 항목별로 생성"],
+    horizontal=True
+)
+st.divider()
+
+
+# --------------------------------------------------
+# 공통 컨텍스트 블록 생성 함수
+# --------------------------------------------------
+
+def build_context_blocks(philosophy, reference, news_items=None):
+    philosophy_block = (
+        f"\n[기업 철학 / 암묵지 / 우선 고려사항]\n{philosophy}\n"
+        if philosophy and philosophy.strip() else ""
+    )
+
+    reference_block = (
+        f"\n[합격자/우수 자기소개서 레퍼런스 — 톤·구성 참고용, 그대로 베끼면 안 됨]\n{reference}\n"
+        if reference and reference.strip() else ""
+    )
+
+    news_block = ""
+    if news_items:
+        news_lines = "\n".join(
+            f"- {n['title']} ({n['source']})" for n in news_items
+        )
+        news_block = (
+            f"\n[해당 직무/업계 최신 뉴스 헤드라인 — 배경 참고용, 사실로 단정하지 말고 참고만 하세요]\n{news_lines}\n"
+        )
+
+    return philosophy_block, reference_block, news_block
 
 
 # --------------------------------------------------
@@ -256,7 +290,7 @@ def build_docx_bytes(title, body_text):
 
 
 # --------------------------------------------------
-# AI 분석 함수
+# AI 분석 함수 (기존)
 # --------------------------------------------------
 
 def analyze_resume(
@@ -278,24 +312,7 @@ def analyze_resume(
         if length_hint else ""
     )
 
-    philosophy_block = (
-        f"\n[기업 철학 / 암묵지 / 우선 고려사항]\n{philosophy}\n"
-        if philosophy and philosophy.strip() else ""
-    )
-
-    reference_block = (
-        f"\n[합격자/우수 자기소개서 레퍼런스 — 톤·구성 참고용, 그대로 베끼면 안 됨]\n{reference}\n"
-        if reference and reference.strip() else ""
-    )
-
-    news_block = ""
-    if news_items:
-        news_lines = "\n".join(
-            f"- {n['title']} ({n['source']})" for n in news_items
-        )
-        news_block = (
-            f"\n[해당 직무/업계 최신 뉴스 헤드라인 — 배경 참고용, 사실로 단정하지 말고 참고만 하세요]\n{news_lines}\n"
-        )
+    philosophy_block, reference_block, news_block = build_context_blocks(philosophy, reference, news_items)
 
     prompt = f"""
 {length_text}
@@ -377,7 +394,7 @@ def analyze_resume(
 
 
 # --------------------------------------------------
-# AI 수정본
+# AI 수정본 (기존)
 # --------------------------------------------------
 
 def revise_resume(
@@ -452,7 +469,90 @@ def revise_resume(
 
 
 # --------------------------------------------------
-# 입력 화면
+# AI 자소서 신규 생성 함수 (신규)
+# --------------------------------------------------
+
+def generate_resume(
+    provider,
+    api_key,
+    model,
+    company,
+    job,
+    job_posting,
+    profile,
+    philosophy,
+    reference,
+    items,
+    length_hint,
+    news_items=None
+):
+    length_text = (
+        f"- **항목당 글자 수 목표**: 공백 포함 **{length_hint}** 분량으로 작성해 주세요."
+        if length_hint else "- 항목당 글자 수 제한은 없지만, 너무 짧거나 장황하지 않게 적절한 분량으로 작성하세요."
+    )
+
+    philosophy_block, reference_block, news_block = build_context_blocks(philosophy, reference, news_items)
+
+    items_text = "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
+
+    prompt = f"""
+당신은 한국 채용시장, 특히 병원/기업 자기소개서 작성을 전문으로 하는 15년 경력의 커리어 컨설턴트입니다.
+아래 지원자 정보를 바탕으로, 요청된 항목별로 "실제로 서류 합격을 이끌어낼 수 있는 수준"의
+완성도 높은 자기소개서를 새로 작성하세요.
+
+절대 원칙 (반드시 지킬 것):
+
+1. 지원자가 [지원자 정보/스펙]에 제공한 사실 범위 안에서만 작성하세요. 없는 경력, 자격증, 수치, 수상 실적을 절대 지어내지 마세요.
+2. 제공된 정보가 부족한 항목은, 있는 정보를 최대한 활용해서 작성하되 문장 끝에 "(※ 이 부분은 지원자의 실제 구체적 경험/수치로 반드시 보완 필요)"라고 표시하세요.
+3. "최선을 다하겠습니다", "열심히 하겠습니다", "책임감을 가지고" 같은 상투적이고 뻔한 문구의 반복을 피하고, 구체적 상황과 행동이 드러나는 문장으로 쓰세요.
+4. 지원자가 준 정보들 중 사용 가능한 사례가 있다면 STAR 기법(상황-행동-결과) 구조로 풀어서 설득력을 높이세요.
+5. 기업 철학/암묵지 정보가 제공된 경우, 문장에 자연스럽게(작위적이지 않게) 녹여내세요.
+6. 합격자 레퍼런스가 제공된 경우, 표현을 그대로 베끼지 말고 구성 방식과 강조점만 참고하세요.
+7. 최신 뉴스 헤드라인이 제공된 경우, 업계/직무 이해를 보여주는 배경으로만 자연스럽게 참고하세요 (사실 단정 금지).
+8. 항목들 사이에 내용이 겹치지 않게, 각 항목마다 다른 강점/경험을 부각하세요.
+9. AI가 쓴 것 같은 인공적인 느낌을 최소화하고, 실제 사람이 쓴 것 같은 자연스러운 문장으로 작성하세요.
+
+{length_text}
+
+[지원 회사]
+{company}
+
+[지원 직무]
+{job}
+
+[채용공고]
+{job_posting if job_posting else "(제공되지 않음 - 일반적인 해당 직무 기준으로 작성)"}
+{philosophy_block}{reference_block}{news_block}
+[지원자 정보 / 스펙 / 경험]
+{profile}
+
+작성할 자기소개서 항목 (아래 순서대로, 각 항목마다 완성된 답변을 작성하세요):
+{items_text}
+
+출력 형식 (반드시 이 형식을 지킬 것):
+
+각 항목마다 아래 형식을 반복하세요.
+
+## [항목 번호]. [항목명]
+
+(여기에 완성된 자기소개서 답변 작성. 문단 구분해서 읽기 쉽게)
+
+**✏️ 작성 포인트**: (이 항목에서 어떤 전략으로 썼는지, 왜 이 구성을 택했는지 1~2줄로 설명)
+
+**💡 더 강력하게 만들려면**: (지원자가 추가로 채워 넣으면 훨씬 좋아질 구체적 정보나 경험 1가지 제안)
+
+모든 항목 작성이 끝나면 마지막에 아래 섹션을 추가하세요.
+
+## 📋 전체 총평
+이 지원자의 자소서 세트가 전체적으로 어떤 인상을 주는지, 그리고 서류 통과 가능성을 높이기 위해
+가장 먼저 보완해야 할 것 1~2가지를 제시하세요.
+"""
+
+    return call_ai(provider, api_key, model, prompt, max_tokens=8192)
+
+
+# --------------------------------------------------
+# 입력 화면 - 공통 (지원 정보 / 채용공고)
 # --------------------------------------------------
 
 st.header("1️⃣ 지원 정보 입력")
@@ -469,7 +569,8 @@ with col2:
 st.header("2️⃣ 채용공고")
 
 job_posting = st.text_area(
-    "📋 채용공고 내용을 붙여넣으세요",
+    "📋 채용공고 내용을 붙여넣으세요"
+    + ("" if mode == "🔍 기존 자소서 분석 및 수정" else " (선택사항 — 없어도 생성 가능하지만, 있으면 훨씬 정확해져요)"),
     height=220,
     placeholder="""채용공고의 주요 내용을 그대로 붙여넣으세요.
 
@@ -484,99 +585,143 @@ job_posting = st.text_area(
 )
 
 
-st.header("3️⃣ 자기소개서")
-
-input_mode = st.radio(
-    "입력 방식을 선택하세요",
-    ["통째로 입력 / 파일 업로드", "문항별로 나눠서 입력"],
-    horizontal=True
-)
+# --------------------------------------------------
+# 3️⃣ 모드별 분기: 기존 자소서 입력 vs 생성할 항목 선택
+# --------------------------------------------------
 
 resume_text = ""
+selected_items = []
 
-if input_mode == "통째로 입력 / 파일 업로드":
+ITEM_PRESETS = [
+    "지원동기",
+    "성장과정",
+    "성격의 장점과 단점",
+    "직무 관련 역량 및 전문성",
+    "입사 후 포부",
+    "협업 및 팀워크 경험",
+    "위기 극복 / 문제해결 경험",
+    "윤리의식과 책임감",
+    "자기계발 노력",
+    "봉사 및 헌신 경험",
+]
 
-    uploaded_file = st.file_uploader(
-        "📎 자기소개서 파일 업로드",
-        type=["pdf", "docx", "txt"]
+if mode == "🔍 기존 자소서 분석 및 수정":
+
+    st.header("3️⃣ 자기소개서")
+
+    input_mode = st.radio(
+        "입력 방식을 선택하세요",
+        ["통째로 입력 / 파일 업로드", "문항별로 나눠서 입력"],
+        horizontal=True
     )
 
-    if uploaded_file is not None:
+    if input_mode == "통째로 입력 / 파일 업로드":
 
-        resume_text = extract_text(uploaded_file)
+        uploaded_file = st.file_uploader(
+            "📎 자기소개서 파일 업로드",
+            type=["pdf", "docx", "txt"]
+        )
 
-        if resume_text:
-            st.success(f"파일을 읽었습니다: {uploaded_file.name}")
-            with st.expander("📖 추출된 자기소개서 확인"):
-                st.text_area("파일 내용", resume_text, height=300, key="extracted_preview")
-        else:
-            st.error("파일에서 텍스트를 읽지 못했습니다.")
+        if uploaded_file is not None:
 
-    direct_text = st.text_area(
-        "또는 여기에 자기소개서를 직접 입력하세요",
-        height=200
-    )
+            resume_text = extract_text(uploaded_file)
 
-    if not resume_text and direct_text.strip():
-        resume_text = direct_text
-        st.info("✍️ 직접 입력한 자기소개서를 분석에 사용합니다.")
+            if resume_text:
+                st.success(f"파일을 읽었습니다: {uploaded_file.name}")
+                with st.expander("📖 추출된 자기소개서 확인"):
+                    st.text_area("파일 내용", resume_text, height=300, key="extracted_preview")
+            else:
+                st.error("파일에서 텍스트를 읽지 못했습니다.")
+
+        direct_text = st.text_area(
+            "또는 여기에 자기소개서를 직접 입력하세요",
+            height=200
+        )
+
+        if not resume_text and direct_text.strip():
+            resume_text = direct_text
+            st.info("✍️ 직접 입력한 자기소개서를 분석에 사용합니다.")
+
+    else:
+        st.caption("문항 제목과 답변을 나눠서 입력하면, AI가 각 문항의 맥락을 더 명확히 구분해서 분석합니다.")
+
+        if "qa_sections" not in st.session_state:
+            st.session_state.qa_sections = [
+                {"title": "", "body": ""}
+            ]
+
+        to_remove = None
+
+        for idx, section in enumerate(st.session_state.qa_sections):
+            with st.container(border=True):
+                c1, c2 = st.columns([5, 1])
+                with c1:
+                    section["title"] = st.text_input(
+                        f"문항 {idx + 1} 제목",
+                        value=section["title"],
+                        placeholder="예: 지원 동기를 작성해 주세요",
+                        key=f"qa_title_{idx}"
+                    )
+                with c2:
+                    st.write("")
+                    st.write("")
+                    if len(st.session_state.qa_sections) > 1:
+                        if st.button("삭제", key=f"qa_remove_{idx}"):
+                            to_remove = idx
+
+                section["body"] = st.text_area(
+                    f"문항 {idx + 1} 답변",
+                    value=section["body"],
+                    height=150,
+                    key=f"qa_body_{idx}"
+                )
+                st.caption(f"글자 수: {count_chars(section['body'])}자")
+
+        if to_remove is not None:
+            st.session_state.qa_sections.pop(to_remove)
+            st.rerun()
+
+        if st.button("➕ 문항 추가"):
+            st.session_state.qa_sections.append({"title": "", "body": ""})
+            st.rerun()
+
+        combined_parts = []
+        for idx, section in enumerate(st.session_state.qa_sections):
+            title = section["title"].strip() or f"문항 {idx + 1}"
+            body = section["body"].strip()
+            if body:
+                combined_parts.append(f"[{title}]\n{body}")
+
+        resume_text = "\n\n".join(combined_parts)
 
 else:
-    st.caption("문항 제목과 답변을 나눠서 입력하면, AI가 각 문항의 맥락을 더 명확히 구분해서 분석합니다.")
+    # ✨ 새 자소서 항목별로 생성 모드
+    st.header("3️⃣ 작성할 자기소개서 항목 선택")
+    st.caption("지원하는 병원(기업)에서 요구하는 항목을 선택하세요. 목록에 없으면 직접 추가할 수 있어요.")
 
-    if "qa_sections" not in st.session_state:
-        st.session_state.qa_sections = [
-            {"title": "", "body": ""}
-        ]
+    selected_presets = st.multiselect(
+        "📋 자소서 항목 선택",
+        ITEM_PRESETS,
+        default=["지원동기", "성장과정", "입사 후 포부"]
+    )
 
-    to_remove = None
+    custom_items_raw = st.text_input(
+        "➕ 목록에 없는 항목 직접 추가 (쉼표로 구분)",
+        placeholder="예: 존경하는 인물과 그 이유, 간호관, 인생에서 가장 힘들었던 순간"
+    )
+    custom_items = [x.strip() for x in custom_items_raw.split(",") if x.strip()]
 
-    for idx, section in enumerate(st.session_state.qa_sections):
-        with st.container(border=True):
-            c1, c2 = st.columns([5, 1])
-            with c1:
-                section["title"] = st.text_input(
-                    f"문항 {idx + 1} 제목",
-                    value=section["title"],
-                    placeholder="예: 지원 동기를 작성해 주세요",
-                    key=f"qa_title_{idx}"
-                )
-            with c2:
-                st.write("")
-                st.write("")
-                if len(st.session_state.qa_sections) > 1:
-                    if st.button("삭제", key=f"qa_remove_{idx}"):
-                        to_remove = idx
+    selected_items = selected_presets + custom_items
 
-            section["body"] = st.text_area(
-                f"문항 {idx + 1} 답변",
-                value=section["body"],
-                height=150,
-                key=f"qa_body_{idx}"
-            )
-            st.caption(f"글자 수: {count_chars(section['body'])}자")
-
-    if to_remove is not None:
-        st.session_state.qa_sections.pop(to_remove)
-        st.rerun()
-
-    if st.button("➕ 문항 추가"):
-        st.session_state.qa_sections.append({"title": "", "body": ""})
-        st.rerun()
-
-    combined_parts = []
-    for idx, section in enumerate(st.session_state.qa_sections):
-        title = section["title"].strip() or f"문항 {idx + 1}"
-        body = section["body"].strip()
-        if body:
-            combined_parts.append(f"[{title}]\n{body}")
-
-    resume_text = "\n\n".join(combined_parts)
+    if selected_items:
+        st.success(f"선택된 항목 ({len(selected_items)}개): " + ", ".join(selected_items))
+    else:
+        st.warning("최소 1개 이상의 항목을 선택하거나 추가해주세요.")
 
 
 st.header("4️⃣ 직무 관련 최신 이슈 (선택사항)")
 
-st.caption("직무나 업계 관련 최신 뉴스를 가져와서, 분석 시 배경 참고 자료로 함께 활용할 수 있습니다.")
+st.caption("직무나 업계 관련 최신 뉴스를 가져와서, 분석/생성 시 배경 참고 자료로 함께 활용할 수 있습니다.")
 
 news_col1, news_col2 = st.columns([3, 1])
 
@@ -613,7 +758,7 @@ if "news_items" in st.session_state and st.session_state["news_items"]:
             st.markdown(f"- [{n['title']}]({n['link']})  \n  <sub>{n['source']} · {n['pub_date']}</sub>", unsafe_allow_html=True)
 
     use_news_in_analysis = st.checkbox(
-        "✅ 분석할 때 위 뉴스 헤드라인을 배경 참고 자료로 함께 활용하기",
+        "✅ 분석/생성할 때 위 뉴스 헤드라인을 배경 참고 자료로 함께 활용하기",
         value=True
     )
 else:
@@ -645,11 +790,17 @@ profile = st.text_area(
 
 st.divider()
 
-if resume_text:
+if mode == "🔍 기존 자소서 분석 및 수정" and resume_text:
     st.caption(f"📏 현재 자기소개서 글자 수 (공백 포함): **{count_chars(resume_text)}자**")
 
+length_label = (
+    "📏 목표 글자 수 (공백 포함, 전체 기준)"
+    if mode == "🔍 기존 자소서 분석 및 수정"
+    else "📏 항목당 목표 글자 수 (공백 포함)"
+)
+
 max_length_option = st.selectbox(
-    "📏 목표 글자 수 (공백 포함)",
+    length_label,
     ["제한 없음", "300자 내외", "500자 내외", "700자 내외", "1000자 내외", "직접 입력"]
 )
 
@@ -660,7 +811,7 @@ if max_length_option == "직접 입력":
 elif max_length_option != "제한 없음":
     target_length = max_length_option
 
-if target_length and resume_text:
+if mode == "🔍 기존 자소서 분석 및 수정" and target_length and resume_text:
     diff = None
     if max_length_option == "직접 입력":
         diff = count_chars(resume_text) - custom_len
@@ -670,194 +821,282 @@ if target_length and resume_text:
         elif diff < 0:
             st.info(f"목표보다 {abs(diff)}자 여유가 있습니다.")
 
-analyze_button = st.button(
-    "🔍 종합 분석 시작",
-    type="primary",
-    use_container_width=True
-)
 
+# ====================================================
+# 모드 1: 기존 자소서 분석 및 수정 (기존 로직)
+# ====================================================
 
-if analyze_button:
+if mode == "🔍 기존 자소서 분석 및 수정":
 
-    if not api_key:
-        st.error("먼저 왼쪽 사이드바에 API Key를 입력해주세요.")
-        st.stop()
-
-    if not company:
-        st.warning("지원 회사를 입력해주세요.")
-        st.stop()
-
-    if not job:
-        st.warning("지원 직무를 입력해주세요.")
-        st.stop()
-
-    if not resume_text:
-        st.warning("자기소개서를 입력하거나 업로드해주세요.")
-        st.stop()
-
-    if not job_posting:
-        st.warning("채용공고 내용을 입력해주세요.")
-        st.stop()
-
-    try:
-        with st.spinner(f"{provider}가 자기소개서와 채용공고를 분석하고 있습니다..."):
-            analysis = analyze_resume(
-                provider,
-                api_key,
-                model_name,
-                resume_text,
-                company,
-                job,
-                job_posting,
-                profile,
-                company_philosophy,
-                reference_resume,
-                target_length,
-                st.session_state.get("news_items") if use_news_in_analysis else None
-            )
-
-        st.session_state["analysis"] = analysis
-        st.session_state["resume_text"] = resume_text
-        st.session_state["company"] = company
-        st.session_state["job"] = job
-        st.session_state["target_length"] = target_length
-        st.session_state["provider"] = provider
-        st.session_state["model_name"] = model_name
-
-        st.success("분석이 완료되었습니다.")
-
-    except Exception as e:
-        st.error("AI 분석 중 오류가 발생했습니다.")
-        st.code(str(e))
-
-
-# --------------------------------------------------
-# 분석 결과
-# --------------------------------------------------
-
-if "analysis" in st.session_state:
-
-    st.divider()
-    st.header("📊 AI 종합 분석")
-    st.caption(f"사용된 AI: {st.session_state.get('provider', '')} ({st.session_state.get('model_name', '')})")
-    st.markdown(st.session_state["analysis"])
-
-    dl_col1, dl_col2 = st.columns(2)
-    with dl_col1:
-        st.download_button(
-            "⬇️ 분석 결과 다운로드 (.txt)",
-            data=st.session_state["analysis"],
-            file_name=f"{st.session_state.get('company','분석결과')}_자소서분석.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-    with dl_col2:
-        docx_bytes = build_docx_bytes("자기소개서 분석 결과", st.session_state["analysis"])
-        if docx_bytes:
-            st.download_button(
-                "⬇️ 분석 결과 다운로드 (.docx)",
-                data=docx_bytes,
-                file_name=f"{st.session_state.get('company','분석결과')}_자소서분석.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True
-            )
-
-    # --------------------------------------------------
-    # 수정본 생성
-    # --------------------------------------------------
-
-    st.divider()
-    st.header("6️⃣ AI 자기소개서 수정")
-
-    st.write(
-        "분석 결과를 바탕으로 기존 경험을 유지하면서 "
-        "지원 직무에 맞게 자기소개서를 개선합니다."
-    )
-
-    revise_button = st.button(
-        "✏️ AI 수정본 만들기",
+    analyze_button = st.button(
+        "🔍 종합 분석 시작",
         type="primary",
         use_container_width=True
     )
 
-    if revise_button:
+    if analyze_button:
 
         if not api_key:
-            st.error("왼쪽 사이드바에 API Key를 입력해주세요.")
+            st.error("먼저 왼쪽 사이드바에 API Key를 입력해주세요.")
+            st.stop()
+
+        if not company:
+            st.warning("지원 회사를 입력해주세요.")
+            st.stop()
+
+        if not job:
+            st.warning("지원 직무를 입력해주세요.")
+            st.stop()
+
+        if not resume_text:
+            st.warning("자기소개서를 입력하거나 업로드해주세요.")
+            st.stop()
+
+        if not job_posting:
+            st.warning("채용공고 내용을 입력해주세요.")
             st.stop()
 
         try:
-            with st.spinner(f"{provider}가 자기소개서를 수정하고 있습니다..."):
-                revised = revise_resume(
+            with st.spinner(f"{provider}가 자기소개서와 채용공고를 분석하고 있습니다..."):
+                analysis = analyze_resume(
                     provider,
                     api_key,
                     model_name,
-                    st.session_state["resume_text"],
-                    st.session_state["analysis"],
-                    st.session_state["company"],
-                    st.session_state["job"],
-                    st.session_state.get("target_length", "")
+                    resume_text,
+                    company,
+                    job,
+                    job_posting,
+                    profile,
+                    company_philosophy,
+                    reference_resume,
+                    target_length,
+                    st.session_state.get("news_items") if use_news_in_analysis else None
                 )
 
-            st.session_state["revised"] = revised
+            st.session_state["analysis"] = analysis
+            st.session_state["resume_text"] = resume_text
+            st.session_state["company"] = company
+            st.session_state["job"] = job
+            st.session_state["target_length"] = target_length
+            st.session_state["provider"] = provider
+            st.session_state["model_name"] = model_name
+
+            st.success("분석이 완료되었습니다.")
 
         except Exception as e:
-            st.error("수정본 생성 중 오류가 발생했습니다.")
+            st.error("AI 분석 중 오류가 발생했습니다.")
             st.code(str(e))
 
+    # 분석 결과
+    if "analysis" in st.session_state:
 
-# --------------------------------------------------
-# 원본 / 수정본 비교
-# --------------------------------------------------
+        st.divider()
+        st.header("📊 AI 종합 분석")
+        st.caption(f"사용된 AI: {st.session_state.get('provider', '')} ({st.session_state.get('model_name', '')})")
+        st.markdown(st.session_state["analysis"])
 
-if "revised" in st.session_state:
-
-    st.divider()
-    st.header("🔄 원본 vs AI 수정본")
-
-    left, right = st.columns(2)
-
-    with left:
-        st.subheader("📄 원본")
-        st.caption(f"글자 수: {count_chars(st.session_state['resume_text'])}자")
-        st.text_area(
-            "원본 자기소개서",
-            st.session_state["resume_text"],
-            height=600,
-            key="original_text"
-        )
-
-    with right:
-        st.subheader("✨ AI 수정본")
-        st.caption(f"글자 수(수정사항 설명 포함): {count_chars(st.session_state['revised'])}자")
-        st.text_area(
-            "AI 수정본 및 수정 설명",
-            st.session_state["revised"],
-            height=600,
-            key="revised_text"
-        )
-
-    dl_col1, dl_col2 = st.columns(2)
-    with dl_col1:
-        st.download_button(
-            "⬇️ 수정본 다운로드 (.txt)",
-            data=st.session_state["revised"],
-            file_name=f"{st.session_state.get('company','수정본')}_자소서수정본.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-    with dl_col2:
-        revised_docx = build_docx_bytes("AI 자기소개서 수정본", st.session_state["revised"])
-        if revised_docx:
+        dl_col1, dl_col2 = st.columns(2)
+        with dl_col1:
             st.download_button(
-                "⬇️ 수정본 다운로드 (.docx)",
-                data=revised_docx,
-                file_name=f"{st.session_state.get('company','수정본')}_자소서수정본.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "⬇️ 분석 결과 다운로드 (.txt)",
+                data=st.session_state["analysis"],
+                file_name=f"{st.session_state.get('company','분석결과')}_자소서분석.txt",
+                mime="text/plain",
                 use_container_width=True
             )
+        with dl_col2:
+            docx_bytes = build_docx_bytes("자기소개서 분석 결과", st.session_state["analysis"])
+            if docx_bytes:
+                st.download_button(
+                    "⬇️ 분석 결과 다운로드 (.docx)",
+                    data=docx_bytes,
+                    file_name=f"{st.session_state.get('company','분석결과')}_자소서분석.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
 
-    st.info("💡 현재 버전에서는 AI 수정본 안에 '주요 수정사항'도 함께 표시됩니다.")
+        # 수정본 생성
+        st.divider()
+        st.header("6️⃣ AI 자기소개서 수정")
+
+        st.write(
+            "분석 결과를 바탕으로 기존 경험을 유지하면서 "
+            "지원 직무에 맞게 자기소개서를 개선합니다."
+        )
+
+        revise_button = st.button(
+            "✏️ AI 수정본 만들기",
+            type="primary",
+            use_container_width=True
+        )
+
+        if revise_button:
+
+            if not api_key:
+                st.error("왼쪽 사이드바에 API Key를 입력해주세요.")
+                st.stop()
+
+            try:
+                with st.spinner(f"{provider}가 자기소개서를 수정하고 있습니다..."):
+                    revised = revise_resume(
+                        provider,
+                        api_key,
+                        model_name,
+                        st.session_state["resume_text"],
+                        st.session_state["analysis"],
+                        st.session_state["company"],
+                        st.session_state["job"],
+                        st.session_state.get("target_length", "")
+                    )
+
+                st.session_state["revised"] = revised
+
+            except Exception as e:
+                st.error("수정본 생성 중 오류가 발생했습니다.")
+                st.code(str(e))
+
+    # 원본 / 수정본 비교
+    if "revised" in st.session_state:
+
+        st.divider()
+        st.header("🔄 원본 vs AI 수정본")
+
+        left, right = st.columns(2)
+
+        with left:
+            st.subheader("📄 원본")
+            st.caption(f"글자 수: {count_chars(st.session_state['resume_text'])}자")
+            st.text_area(
+                "원본 자기소개서",
+                st.session_state["resume_text"],
+                height=600,
+                key="original_text"
+            )
+
+        with right:
+            st.subheader("✨ AI 수정본")
+            st.caption(f"글자 수(수정사항 설명 포함): {count_chars(st.session_state['revised'])}자")
+            st.text_area(
+                "AI 수정본 및 수정 설명",
+                st.session_state["revised"],
+                height=600,
+                key="revised_text"
+            )
+
+        dl_col1, dl_col2 = st.columns(2)
+        with dl_col1:
+            st.download_button(
+                "⬇️ 수정본 다운로드 (.txt)",
+                data=st.session_state["revised"],
+                file_name=f"{st.session_state.get('company','수정본')}_자소서수정본.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+        with dl_col2:
+            revised_docx = build_docx_bytes("AI 자기소개서 수정본", st.session_state["revised"])
+            if revised_docx:
+                st.download_button(
+                    "⬇️ 수정본 다운로드 (.docx)",
+                    data=revised_docx,
+                    file_name=f"{st.session_state.get('company','수정본')}_자소서수정본.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
+
+        st.info("💡 현재 버전에서는 AI 수정본 안에 '주요 수정사항'도 함께 표시됩니다.")
+
+
+# ====================================================
+# 모드 2: 새 자소서 항목별로 생성 (신규)
+# ====================================================
+
+else:
+
+    generate_button = st.button(
+        "✨ 자소서 항목별로 생성하기",
+        type="primary",
+        use_container_width=True
+    )
+
+    if generate_button:
+
+        if not api_key:
+            st.error("먼저 왼쪽 사이드바에 API Key를 입력해주세요.")
+            st.stop()
+
+        if not company:
+            st.warning("지원 회사를 입력해주세요.")
+            st.stop()
+
+        if not job:
+            st.warning("지원 직무를 입력해주세요.")
+            st.stop()
+
+        if not profile or not profile.strip():
+            st.warning("자소서에 담을 실제 경험/스펙 정보를 '5️⃣ 나의 추가 정보'에 입력해주세요. (없으면 AI가 내용을 지어낼 수밖에 없어요)")
+            st.stop()
+
+        if not selected_items:
+            st.warning("작성할 자소서 항목을 최소 1개 이상 선택하거나 추가해주세요.")
+            st.stop()
+
+        try:
+            with st.spinner(f"{provider}가 선택하신 {len(selected_items)}개 항목의 자소서를 작성하고 있습니다..."):
+                generated = generate_resume(
+                    provider,
+                    api_key,
+                    model_name,
+                    company,
+                    job,
+                    job_posting,
+                    profile,
+                    company_philosophy,
+                    reference_resume,
+                    selected_items,
+                    target_length,
+                    st.session_state.get("news_items") if use_news_in_analysis else None
+                )
+
+            st.session_state["generated"] = generated
+            st.session_state["gen_company"] = company
+            st.session_state["gen_job"] = job
+            st.session_state["gen_provider"] = provider
+            st.session_state["gen_model_name"] = model_name
+
+            st.success("자소서 생성이 완료되었습니다.")
+
+        except Exception as e:
+            st.error("AI 생성 중 오류가 발생했습니다.")
+            st.code(str(e))
+
+    if "generated" in st.session_state:
+
+        st.divider()
+        st.header("✨ AI가 생성한 자기소개서")
+        st.caption(f"사용된 AI: {st.session_state.get('gen_provider', '')} ({st.session_state.get('gen_model_name', '')})")
+        st.markdown(st.session_state["generated"])
+
+        dl_col1, dl_col2 = st.columns(2)
+        with dl_col1:
+            st.download_button(
+                "⬇️ 생성 결과 다운로드 (.txt)",
+                data=st.session_state["generated"],
+                file_name=f"{st.session_state.get('gen_company','자소서')}_AI생성자소서.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+        with dl_col2:
+            gen_docx_bytes = build_docx_bytes("AI 생성 자기소개서", st.session_state["generated"])
+            if gen_docx_bytes:
+                st.download_button(
+                    "⬇️ 생성 결과 다운로드 (.docx)",
+                    data=gen_docx_bytes,
+                    file_name=f"{st.session_state.get('gen_company','자소서')}_AI생성자소서.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
+
+        st.info("💡 (※ 보완 필요) 표시가 있는 부분은, 반드시 본인의 실제 구체적 경험/수치로 채워 넣은 뒤 제출하세요. AI가 지어낸 내용이 아니라 사실 확인이 꼭 필요합니다.")
 
 
 # --------------------------------------------------
@@ -867,6 +1106,7 @@ if "revised" in st.session_state:
 st.divider()
 
 st.caption(
-    "※ AI 평가는 실제 채용 결과나 합격 확률을 보장하지 않습니다. "
-    "특히 존재하지 않는 경력·성과·자격증을 AI가 만들어내지 않도록 설계되어 있습니다."
+    "※ AI 평가/생성 결과는 실제 채용 결과나 합격 확률을 보장하지 않습니다. "
+    "특히 존재하지 않는 경력·성과·자격증을 AI가 만들어내지 않도록 설계되어 있지만, "
+    "제출 전 반드시 본인이 직접 검토하고 사실 확인을 해주세요."
 )
