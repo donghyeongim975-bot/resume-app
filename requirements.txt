@@ -1,2 +1,6 @@
 streamlit
-google-generativeai
+requests
+google-genai
+anthropic
+pymupdf
+python-docx
