@@ -95,12 +95,14 @@ with st.sidebar:
     st.markdown("""
     ### 현재 버전
 
-    **2차 버전**
+    **3차 버전**
 
     - Gemini / Claude 중 선택 가능
     - 기존 자소서 분석 / AI 수정본 생성
-    - **새 자소서 항목별 생성 (신규)**
-    - **자소서 항목 선택란 (신규)**
+    - 새 자소서 항목별 생성
+    - 자소서 항목 선택란 (기타 + 무제한 직접 추가)
+    - 항목별 "병원이 왜 이걸 묻는지" 분석 및 경력 연결
+    - 관련 병원/직무 이슈 자동 수집 → 결과에 참고자료로 첨부
     - 직무 적합도 분석, 강점/약점 분석
     - 원본/수정본 비교, 결과 다운로드 (.txt / .docx)
     - 글자 수 실시간 카운터
@@ -108,7 +110,6 @@ with st.sidebar:
     이후에는
 
     - 실제 채용공고 검색
-    - 회사 뉴스 분석 / 채용시장 분석
     - 경쟁 지원자 포지셔닝
 
     을 추가할 수 있습니다.
@@ -130,7 +131,7 @@ reference_resume = st.text_area(
 
 
 # --------------------------------------------------
-# 모드 선택 (신규)
+# 모드 선택
 # --------------------------------------------------
 
 st.divider()
@@ -163,7 +164,7 @@ def build_context_blocks(philosophy, reference, news_items=None):
             f"- {n['title']} ({n['source']})" for n in news_items
         )
         news_block = (
-            f"\n[해당 직무/업계 최신 뉴스 헤드라인 — 배경 참고용, 사실로 단정하지 말고 참고만 하세요]\n{news_lines}\n"
+            f"\n[해당 병원/직무/업계 최신 이슈 헤드라인 — 배경 참고용, 사실로 단정하지 말고 참고만 하세요]\n{news_lines}\n"
         )
 
     return philosophy_block, reference_block, news_block
@@ -280,6 +281,22 @@ def fetch_related_news(keyword, max_items=5):
     return items
 
 
+def get_company_related_news(company, job, max_items=6):
+    """지원 병원(기업) + 직무 관련 최신 이슈를 화면 조작 없이 자동으로 수집합니다.
+    실패해도 전체 흐름을 막지 않도록 조용히 빈 리스트를 반환합니다."""
+
+    keyword_parts = [p.strip() for p in [company, job] if p and p.strip()]
+    keyword = " ".join(keyword_parts).strip()
+
+    if not keyword:
+        return []
+
+    try:
+        return fetch_related_news(keyword, max_items=max_items)
+    except Exception:
+        return []
+
+
 def build_docx_bytes(title, body_text):
     """간단한 텍스트를 docx 바이트로 변환합니다. python-docx가 없으면 None 반환."""
     if Document is None:
@@ -297,7 +314,7 @@ def build_docx_bytes(title, body_text):
 
 
 # --------------------------------------------------
-# AI 분석 함수 (기존)
+# AI 분석 함수 (기존 자소서 분석)
 # --------------------------------------------------
 
 def analyze_resume(
@@ -337,7 +354,7 @@ def analyze_resume(
 6. 채용공고의 요구사항과 자기소개서 내용을 하나씩 대응시키세요.
 7. 기업 철학/암묵지가 제공된 경우, 자기소개서가 그 철학과 얼마나 부합하는지도 평가하세요.
 8. 합격자 레퍼런스가 제공된 경우, 내용을 베끼라는 뜻이 아니라 구성/톤/강조점 비교 참고용으로만 사용하세요.
-9. 최신 뉴스 헤드라인이 제공된 경우, 업계/직무의 최근 분위기를 이해하는 배경 정보로만 참고하고, 자기소개서 평가의 확정적 근거로 사용하지 마세요.
+9. 최신 이슈 헤드라인이 제공된 경우, 업계/직무/병원의 최근 분위기를 이해하는 배경 정보로만 참고하고, 자기소개서 평가의 확정적 근거로 사용하지 마세요.
 
 [지원 회사]
 {company}
@@ -395,13 +412,17 @@ def analyze_resume(
 
 # 11. 종합 평가
 현재 자소서가 어떤 포지션으로 보이는지 설명
+
+# 12. 자기소개서 보완을 위해 필요한 정보 (요약)
+현재 자료 기준으로 부족하거나, 더 채워지면 훨씬 좋아질 정보/경험/능력/자격을
+"~가 있다면 추가하면 좋습니다" 형식으로 짧게 정리 (있는지 모르는 내용을 사실처럼 단정하지 말 것)
 """
 
     return call_ai(provider, api_key, model, prompt)
 
 
 # --------------------------------------------------
-# AI 수정본 (기존)
+# AI 수정본
 # --------------------------------------------------
 
 def revise_resume(
@@ -449,6 +470,7 @@ def revise_resume(
 7. 지나치게 AI가 작성한 것처럼 보이는 문장을 피하세요.
 8. 원래 지원자의 말투와 경험을 최대한 유지하세요.
 9. 글자 수 제한이 주어진 경우 반드시 그 범위 내로 작성하세요.
+10. 문단과 문단 사이의 논리 흐름이 매끄럽게 이어지도록 다듬으세요.
 
 다음 형식으로 답변하세요.
 
@@ -476,7 +498,7 @@ def revise_resume(
 
 
 # --------------------------------------------------
-# AI 자소서 신규 생성 함수 (신규)
+# AI 자소서 신규 생성 함수
 # --------------------------------------------------
 
 def generate_resume(
@@ -515,9 +537,12 @@ def generate_resume(
 4. 지원자가 준 정보들 중 사용 가능한 사례가 있다면 STAR 기법(상황-행동-결과) 구조로 풀어서 설득력을 높이세요.
 5. 기업 철학/암묵지 정보가 제공된 경우, 문장에 자연스럽게(작위적이지 않게) 녹여내세요.
 6. 합격자 레퍼런스가 제공된 경우, 표현을 그대로 베끼지 말고 구성 방식과 강조점만 참고하세요.
-7. 최신 뉴스 헤드라인이 제공된 경우, 업계/직무 이해를 보여주는 배경으로만 자연스럽게 참고하세요 (사실 단정 금지).
+7. 최신 이슈 헤드라인이 제공된 경우, 병원/업계/직무 이해를 보여주는 배경으로만 자연스럽게 참고하세요 (사실 단정 금지).
 8. 항목들 사이에 내용이 겹치지 않게, 각 항목마다 다른 강점/경험을 부각하세요.
 9. AI가 쓴 것 같은 인공적인 느낌을 최소화하고, 실제 사람이 쓴 것 같은 자연스러운 문장으로 작성하세요.
+10. 각 항목의 문단 간 연결이 물 흐르듯 자연스럽고 매끄럽게 읽히도록, 앞 문장과 뒤 문장의 논리적 연결(왜 그 다음 내용이 이어지는지)을 분명히 하세요. 갑자기 화제가 바뀌거나 비약하는 문장은 피하세요.
+11. 단순한 자기소개 나열이 아니라, 읽는 사람이 "이 지원자를 꼭 채용해야겠다"는 확신을 갖게 만드는 자기 PR 중심의 논리로 구성하세요. 단, 근거 없는 과장이나 허풍이 아니라 실제 제공된 정보에 기반한 설득력 있는 논리여야 합니다.
+12. 채용공고에서 확인되는 요구사항, 병원의 특성/철학과 [지원자 정보/스펙]에 있는 경험을 적극적으로 연결해서, 왜 이 지원자가 그 요구사항에 부합하는 사람인지 답변 문장 안에서 논리적으로 드러나게 하세요.
 
 {length_text}
 
@@ -542,17 +567,25 @@ def generate_resume(
 
 ## [항목 번호]. [항목명]
 
-(여기에 완성된 자기소개서 답변 작성. 문단 구분해서 읽기 쉽게)
+**🎯 병원(기업)이 이 항목을 요구하는 이유**
+(채용공고 내용과 병원/기업의 특성에 비추어, 이 항목을 통해 실제로 무엇을 확인하고 싶어하는지, 왜 이런 질문을 하는지 그 의도와 의의를 2~4줄로 분석하세요. 채용공고에 근거가 없다면 해당 직무·업종에서 이런 항목을 묻는 일반적인 이유를 설명하세요.)
 
-**✏️ 작성 포인트**: (이 항목에서 어떤 전략으로 썼는지, 왜 이 구성을 택했는지 1~2줄로 설명)
+(여기에 완성된 자기소개서 답변 작성. 문단 구분해서 읽기 쉽게, 논리 흐름이 매끄럽고, 왜 이 지원자를 뽑아야 하는지 설득력 있게 드러나도록 작성)
+
+**✏️ 작성 포인트**: (이 항목에서 어떤 전략으로 썼는지, 위에서 분석한 '요구 이유'와 어떻게 연결했는지 1~2줄로 설명)
 
 **💡 더 강력하게 만들려면**: (지원자가 추가로 채워 넣으면 훨씬 좋아질 구체적 정보나 경험 1가지 제안)
 
-모든 항목 작성이 끝나면 마지막에 아래 섹션을 추가하세요.
+모든 항목 작성이 끝나면 마지막에 아래 두 섹션을 순서대로 추가하세요.
 
 ## 📋 전체 총평
 이 지원자의 자소서 세트가 전체적으로 어떤 인상을 주는지, 그리고 서류 통과 가능성을 높이기 위해
 가장 먼저 보완해야 할 것 1~2가지를 제시하세요.
+
+## 🧩 자기소개서를 더 탄탄하게 만들기 위해 필요한 것 (요약)
+현재 제공된 자료를 기준으로, 어떤 정보/경험/능력/자격이 보완되면 합격 가능성을 더 높일 수 있을지
+짧게 요약하세요. 실제로 있는지 없는지 알 수 없는 내용을 사실처럼 단정하지 말고,
+"~한 경험/자료가 있다면 추가하면 좋습니다" 형식으로 정리하세요.
 """
 
     return call_ai(provider, api_key, model, prompt, max_tokens=8192)
@@ -610,6 +643,7 @@ ITEM_PRESETS = [
     "윤리의식과 책임감",
     "자기계발 노력",
     "봉사 및 헌신 경험",
+    "기타",
 ]
 
 if mode == "🔍 기존 자소서 분석 및 수정":
@@ -704,7 +738,7 @@ if mode == "🔍 기존 자소서 분석 및 수정":
 else:
     # ✨ 새 자소서 항목별로 생성 모드
     st.header("3️⃣ 작성할 자기소개서 항목 선택")
-    st.caption("지원하는 병원(기업)에서 요구하는 항목을 선택하세요. 목록에 없으면 직접 추가할 수 있어요.")
+    st.caption("지원하는 병원(기업)에서 요구하는 항목을 선택하세요. 목록에 없으면 아래에서 원하는 만큼 직접 추가할 수 있어요.")
 
     selected_presets = st.multiselect(
         "📋 자소서 항목 선택",
@@ -712,13 +746,41 @@ else:
         default=["지원동기", "성장과정", "입사 후 포부"]
     )
 
-    custom_items_raw = st.text_input(
-        "➕ 목록에 없는 항목 직접 추가 (쉼표로 구분)",
-        placeholder="예: 존경하는 인물과 그 이유, 간호관, 인생에서 가장 힘들었던 순간"
-    )
-    custom_items = [x.strip() for x in custom_items_raw.split(",") if x.strip()]
+    st.markdown("**➕ 목록에 없는 항목 직접 추가**")
+    st.caption("병원마다 요구하는 항목이 다르니, 필요한 만큼 계속 추가하세요. (개수 제한 없음)")
 
-    selected_items = selected_presets + custom_items
+    if "custom_items" not in st.session_state:
+        st.session_state.custom_items = []
+
+    add_col1, add_col2 = st.columns([5, 1])
+    with add_col1:
+        new_custom_item = st.text_input(
+            "추가할 항목명",
+            key="new_custom_item_input",
+            placeholder="예: 존경하는 인물과 그 이유, 간호관, 인생에서 가장 힘들었던 순간",
+            label_visibility="collapsed"
+        )
+    with add_col2:
+        if st.button("추가", use_container_width=True, key="add_custom_item_btn"):
+            if new_custom_item.strip():
+                st.session_state.custom_items.append(new_custom_item.strip())
+                st.rerun()
+
+    if st.session_state.custom_items:
+        st.caption(f"직접 추가한 항목 ({len(st.session_state.custom_items)}개):")
+        remove_idx = None
+        for idx, item in enumerate(st.session_state.custom_items):
+            item_col1, item_col2 = st.columns([6, 1])
+            with item_col1:
+                st.write(f"• {item}")
+            with item_col2:
+                if st.button("삭제", key=f"remove_custom_item_{idx}"):
+                    remove_idx = idx
+        if remove_idx is not None:
+            st.session_state.custom_items.pop(remove_idx)
+            st.rerun()
+
+    selected_items = selected_presets + st.session_state.custom_items
 
     if selected_items:
         st.success(f"선택된 항목 ({len(selected_items)}개): " + ", ".join(selected_items))
@@ -726,53 +788,7 @@ else:
         st.warning("최소 1개 이상의 항목을 선택하거나 추가해주세요.")
 
 
-st.header("4️⃣ 직무 관련 최신 이슈 (선택사항)")
-
-st.caption("직무나 업계 관련 최신 뉴스를 가져와서, 분석/생성 시 배경 참고 자료로 함께 활용할 수 있습니다.")
-
-news_col1, news_col2 = st.columns([3, 1])
-
-with news_col1:
-    news_keyword = st.text_input(
-        "🔍 검색 키워드",
-        value=job if job else "",
-        placeholder="예: 간호사, 신규간호사 처우, 병원 채용 등"
-    )
-
-with news_col2:
-    st.write("")
-    st.write("")
-    fetch_news_button = st.button("📰 뉴스 불러오기", use_container_width=True)
-
-if fetch_news_button:
-    if not news_keyword.strip():
-        st.warning("검색 키워드를 입력해주세요.")
-    else:
-        try:
-            with st.spinner("최신 뉴스를 가져오는 중..."):
-                news_items = fetch_related_news(news_keyword)
-            st.session_state["news_items"] = news_items
-            st.session_state["news_keyword"] = news_keyword
-            if not news_items:
-                st.info("관련 뉴스를 찾지 못했습니다. 다른 키워드로 시도해보세요.")
-        except Exception as e:
-            st.error("뉴스를 가져오는 중 오류가 발생했습니다.")
-            st.code(str(e))
-
-if "news_items" in st.session_state and st.session_state["news_items"]:
-    with st.expander(f"📰 '{st.session_state.get('news_keyword','')}' 관련 최신 뉴스 ({len(st.session_state['news_items'])}건)", expanded=True):
-        for n in st.session_state["news_items"]:
-            st.markdown(f"- [{n['title']}]({n['link']})  \n  <sub>{n['source']} · {n['pub_date']}</sub>", unsafe_allow_html=True)
-
-    use_news_in_analysis = st.checkbox(
-        "✅ 분석/생성할 때 위 뉴스 헤드라인을 배경 참고 자료로 함께 활용하기",
-        value=True
-    )
-else:
-    use_news_in_analysis = False
-
-
-st.header("5️⃣ 나의 추가 정보")
+st.header("4️⃣ 나의 추가 정보")
 
 profile = st.text_area(
     "👤 경력 / 학력 / 자격증 / 경험 / 스펙",
@@ -829,8 +845,18 @@ if mode == "🔍 기존 자소서 분석 및 수정" and target_length and resum
             st.info(f"목표보다 {abs(diff)}자 여유가 있습니다.")
 
 
+def render_related_news(news_items, company):
+    """수집된 관련 이슈를 결과 하단에 참고자료로 표시합니다."""
+    if not news_items:
+        return
+    with st.expander(f"📎 참고자료: '{company or '지원 기관'}' 관련 최신 이슈 ({len(news_items)}건)", expanded=False):
+        st.caption("아래 자료는 자동으로 수집된 것으로, 사실 여부는 링크를 직접 확인해 주세요.")
+        for n in news_items:
+            st.markdown(f"- [{n['title']}]({n['link']})  \n  <sub>{n['source']} · {n['pub_date']}</sub>", unsafe_allow_html=True)
+
+
 # ====================================================
-# 모드 1: 기존 자소서 분석 및 수정 (기존 로직)
+# 모드 1: 기존 자소서 분석 및 수정
 # ====================================================
 
 if mode == "🔍 기존 자소서 분석 및 수정":
@@ -865,6 +891,7 @@ if mode == "🔍 기존 자소서 분석 및 수정":
 
         try:
             with st.spinner(f"{provider}가 자기소개서와 채용공고를 분석하고 있습니다..."):
+                auto_news = get_company_related_news(company, job)
                 analysis = analyze_resume(
                     provider,
                     api_key,
@@ -877,7 +904,7 @@ if mode == "🔍 기존 자소서 분석 및 수정":
                     company_philosophy,
                     reference_resume,
                     target_length,
-                    st.session_state.get("news_items") if use_news_in_analysis else None
+                    auto_news
                 )
 
             st.session_state["analysis"] = analysis
@@ -887,6 +914,7 @@ if mode == "🔍 기존 자소서 분석 및 수정":
             st.session_state["target_length"] = target_length
             st.session_state["provider"] = provider
             st.session_state["model_name"] = model_name
+            st.session_state["analysis_news"] = auto_news
 
             st.success("분석이 완료되었습니다.")
 
@@ -901,6 +929,8 @@ if mode == "🔍 기존 자소서 분석 및 수정":
         st.header("📊 AI 종합 분석")
         st.caption(f"사용된 AI: {st.session_state.get('provider', '')} ({st.session_state.get('model_name', '')})")
         st.markdown(st.session_state["analysis"])
+
+        render_related_news(st.session_state.get("analysis_news"), st.session_state.get("company"))
 
         dl_col1, dl_col2 = st.columns(2)
         with dl_col1:
@@ -924,7 +954,7 @@ if mode == "🔍 기존 자소서 분석 및 수정":
 
         # 수정본 생성
         st.divider()
-        st.header("6️⃣ AI 자기소개서 수정")
+        st.header("5️⃣ AI 자기소개서 수정")
 
         st.write(
             "분석 결과를 바탕으로 기존 경험을 유지하면서 "
@@ -1014,7 +1044,7 @@ if mode == "🔍 기존 자소서 분석 및 수정":
 
 
 # ====================================================
-# 모드 2: 새 자소서 항목별로 생성 (신규)
+# 모드 2: 새 자소서 항목별로 생성
 # ====================================================
 
 else:
@@ -1040,7 +1070,7 @@ else:
             st.stop()
 
         if not profile or not profile.strip():
-            st.warning("자소서에 담을 실제 경험/스펙 정보를 '5️⃣ 나의 추가 정보'에 입력해주세요. (없으면 AI가 내용을 지어낼 수밖에 없어요)")
+            st.warning("자소서에 담을 실제 경험/스펙 정보를 '4️⃣ 나의 추가 정보'에 입력해주세요. (없으면 AI가 내용을 지어낼 수밖에 없어요)")
             st.stop()
 
         if not selected_items:
@@ -1049,6 +1079,7 @@ else:
 
         try:
             with st.spinner(f"{provider}가 선택하신 {len(selected_items)}개 항목의 자소서를 작성하고 있습니다..."):
+                auto_news = get_company_related_news(company, job)
                 generated = generate_resume(
                     provider,
                     api_key,
@@ -1061,7 +1092,7 @@ else:
                     reference_resume,
                     selected_items,
                     target_length,
-                    st.session_state.get("news_items") if use_news_in_analysis else None
+                    auto_news
                 )
 
             st.session_state["generated"] = generated
@@ -1069,6 +1100,7 @@ else:
             st.session_state["gen_job"] = job
             st.session_state["gen_provider"] = provider
             st.session_state["gen_model_name"] = model_name
+            st.session_state["gen_news"] = auto_news
 
             st.success("자소서 생성이 완료되었습니다.")
 
@@ -1082,6 +1114,8 @@ else:
         st.header("✨ AI가 생성한 자기소개서")
         st.caption(f"사용된 AI: {st.session_state.get('gen_provider', '')} ({st.session_state.get('gen_model_name', '')})")
         st.markdown(st.session_state["generated"])
+
+        render_related_news(st.session_state.get("gen_news"), st.session_state.get("gen_company"))
 
         dl_col1, dl_col2 = st.columns(2)
         with dl_col1:
