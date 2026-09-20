@@ -38,8 +38,15 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📄 AI 취업·자소서 분석기")
-st.caption("자소서 + 채용공고 + 지원직무를 비교해서 개선 방향을 분석하거나, 새 자소서를 항목별로 생성합니다.")
+title_col, image_col = st.columns([5, 1])
+with title_col:
+    st.title("[자기소개서]")
+    st.caption("자소서 + 채용공고 + 지원직무를 비교해서 개선 방향을 분석하거나, 새 자소서를 항목별로 생성합니다.")
+with image_col:
+    try:
+        st.image("monkey.png", use_container_width=True)
+    except Exception:
+        pass
 
 
 # --------------------------------------------------
